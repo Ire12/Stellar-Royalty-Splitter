@@ -1,4 +1,4 @@
-﻿// dotenv is optional - load .env file if needed
+// dotenv is optional - load .env file if needed
 // import "dotenv/config";
 
 // OTel SDK must initialise before any other imports so auto-instrumentation
@@ -26,6 +26,7 @@ import historyRouter from "./routes/history.js";
 import webhooksRouter from "./routes/webhooks.js";
 import { analyticsRouter } from "./routes/analytics.js";
 import { forecastRouter } from "./routes/analytics/forecast.js";
+import { forecastModelRouter } from "./routes/analytics/forecast-model.js";
 import { benchmarkingRouter } from "./routes/analytics/benchmarking.js";
 import { contractRouter } from "./routes/contract.js";
 import { healthRouter } from "./routes/health.js";
@@ -100,6 +101,16 @@ import { vestingRouter } from "./routes/vesting.js";
 import { oracleRouter } from "./routes/oracle.js";
 import { auditEnhancedRouter } from "./routes/audit-enhanced.js";
 import { swapAggregatorRouter } from "./routes/swap-aggregator.js";
+import { schedulesRouter, batchRouter } from "./routes/schedules.js";
+import { identityRouter } from "./routes/identity.js";
+import { backupRouter } from "./routes/backup.js";
+import { startDistributionScheduler } from "./services/distribution-scheduler.js";
+import { startBackupScheduler } from "./services/contract-backup.js";
+import { rightsRouter } from "./routes/rights-management.js";
+import { segmentationRouter } from "./routes/segmentation.js";
+import { campaignsRouter } from "./routes/campaigns.js";
+
+
 
 // Initialize database on startup
 initializeDatabase();
@@ -403,6 +414,9 @@ app.use("/api/v1", historyRouter);
 app.use("/api/v1", webhooksRouter);
 app.use("/api/v1/analytics/forecast", readLimiter);
 app.use("/api/v1/analytics/forecast", forecastRouter);
+// AI-powered earnings forecast with 30/60/90-day predictions (#1037)
+app.use("/api/v1/analytics/forecast-model", readLimiter);
+app.use("/api/v1/analytics/forecast-model", forecastModelRouter);
 app.use("/api/v1", analyticsRouter);
 // Collaborator performance benchmarking (#952)
 app.use("/api/v1/analytics/benchmarking", benchmarkingRouter);
@@ -505,12 +519,29 @@ app.use("/api/v1/batch", writeLimiter);
 app.use("/api/v1/schedules", schedulesRouter);
 app.use("/api/v1/batch", batchRouter);
 
+// Cross-chain liquidity pool integration (#cross-chain)
+app.use("/api/v1/cross-chain", writeLimiter);
+app.use("/api/v1/cross-chain", crossChainRouter);
+
 // Web3 identity — ENS + Lens (#992)
 app.use("/api/v1/identity", identityRouter);
 
 // Contract backup and disaster recovery (#993)
 app.use("/api/v1/backup", writeLimiter);
 app.use("/api/v1/backup", backupRouter);
+
+// Rights Management System
+app.use("/api/v1/rights", writeLimiter);
+app.use("/api/v1/rights", rightsRouter);
+
+// Advanced user segmentation and targeting for marketing (#segmentation)
+app.use("/api/v1/segments", writeLimiter);
+app.use("/api/v1/segments", segmentationRouter);
+
+// Marketing campaign management and A/B testing (#segmentation)
+app.use("/api/v1/campaigns", writeLimiter);
+app.use("/api/v1/campaigns", campaignsRouter);
+
 
 // Admin operations (separate from /api/v1; protected by ADMIN_ROTATE_TOKEN)
 const RATE_LIMIT_ADMIN_WINDOW_MS = 60_000;

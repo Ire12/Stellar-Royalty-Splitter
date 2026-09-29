@@ -1,5 +1,5 @@
-﻿/**
- * Database module index ÔÇö re-exports all database functions.
+/**
+ * Database module index — re-exports all database functions.
  * Provides backwards compatibility while organizing code into focused submodules.
  */
 
@@ -227,7 +227,7 @@ export {
   getReferralLinkByCode,
   registerReferral,
   activateReferral,
-  getReferralByReferred,
+  getReferralBy Referred,
   getReferralsByReferrer,
   countReferralsByReferrer,
   awardReferralBonus,
@@ -506,3 +506,41 @@ export {
   listBatchExecutionsBySchedule,
   listRecentBatchExecutions,
 } from "./schedules.js";
+
+// Rights Management System
+export {
+  initializeRightsTables,
+  clearRightsTables,
+  createRightRecord,
+  getRightById,
+  getRightsByContract,
+  getRightsByOwner,
+  updateRightRecord,
+  deleteRightRecord,
+  upsertRightMetadataRecord,
+  getRightMetadataRecord,
+  createVerificationProofRecord,
+  getVerificationProofById,
+  getVerificationProofsRecord,
+  updateVerificationProofStatusRecord,
+  addRightHistoryRecord,
+  getRightHistoryRecord,
+  linkRightToDisputeRecord,
+  getRightsForDisputeRecord,
+  getDisputesForRightRecord,
+} from "./rights.js";
+
+// User segmentation and marketing targeting
+export {
+  initializeSegmentationTables,
+  createSegment,
+  getSegment,
+  listSegments,
+  updateSegment,
+  deleteSegment,
+  computeSegmentMembership,
+  getSegmentMembers,
+  getSegmentSize,
+  getSegmentStatistics,
+  exportSegmentAudience,
+} from "./segmentation.js";
