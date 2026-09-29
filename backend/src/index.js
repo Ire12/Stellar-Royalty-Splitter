@@ -107,6 +107,7 @@ import { backupRouter } from "./routes/backup.js";
 import { startDistributionScheduler } from "./services/distribution-scheduler.js";
 import { startBackupScheduler } from "./services/contract-backup.js";
 import { rightsRouter } from "./routes/rights-management.js";
+import { apiDocsRouter } from "./routes/api-docs.js";
 
 
 
@@ -189,6 +190,10 @@ app.use(shutdownMiddleware);
 
 // Security headers
 app.use(helmet());
+
+// Interactive API explorer (Swagger UI) and OpenAPI 3.0 spec (#api-docs).
+// Mounted before rate limiting so the explorer assets are always reachable.
+app.use("/api/docs", apiDocsRouter);
 
 // Distributed tracing ÔÇö creates per-request OTel spans, injects X-Trace-Id and X-Correlation-Id
 app.use(tracingMiddleware);
