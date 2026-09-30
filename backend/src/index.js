@@ -337,6 +337,9 @@ const simulateLimiter = rateLimit({
 
 app.use(generalLimiter);
 
+// Log deprecated-version usage for partner migration tracking (#api-versioning).
+app.use(deprecationTrackingMiddleware());
+
 // #608: Track per-API-key request counts for the rate-limit dashboard.
 // Only records authenticated (keyed) requests that were not blocked by the
 // limiter above (blocked requests are recorded in the limiter's handler).
@@ -365,6 +368,12 @@ app.use(
 // Attach X-API-Version header to all versioned responses
 app.use("/api/v1", (_req, res, next) => {
   res.set("X-API-Version", "v1");
+  next();
+});
+
+// Attach X-API-Version header to all versioned responses (v1, v2, v3).
+app.use("/api", (_req, res, next) => {
+  res.set("X-API-Version", res.get("X-API-Version") || "v3");
   next();
 });
 
@@ -583,8 +592,9 @@ app.use("/api/v1/partner", apiKeyAuth(), meterApiCall(), partnerRateLimit(), par
 // Legacy /api/* redirect to /api/v1/* — routes under /api/v1/* are canonical
 app.use("/api", (req, res) => {
   res.set("Deprecation", "true");
-  res.set("Link", `</api/v1${req.url}>; rel="successor-version"`);
-  res.redirect(308, `/api/v1${req.url}`);
+  res.set("Sunset", new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString());
+  res.set("Link", `</api/v3${req.url}>; rel="successor-version"`);
+  res.redirect(308, `/api/v3${req.url}`);
 });
 
 // Any request that didn't match a route above gets the standard error shape
@@ -602,6 +612,9 @@ async function startServer() {
 
   // GraphQL API with subscriptions (#809, #969)
   await setupGraphQL(app, "/api/v1/graphql", server);
+
+  // GraphQL is also exposed under the current version prefix (#api-versioning).
+  await setupGraphQL(app, "/api/v3/graphql", server);
 
   // Initialize WebSocket for real-time notifications (#594)
   const wss = initializeWebSocket(server);
@@ -702,6 +715,9 @@ async function startServer() {
       }
       if (l2WarmingInterval) {
         clearInterval(l2WarmingInterval);
+      }
+      if (typeof stopDeprecationTracking === "function") {
+        stopDeprecationTracking();
       }
     },
   });
