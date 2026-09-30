@@ -227,7 +227,7 @@ export {
   getReferralLinkByCode,
   registerReferral,
   activateReferral,
-  getReferralByReferred,
+  getReferralBy Referred,
   getReferralsByReferrer,
   countReferralsByReferrer,
   awardReferralBonus,
@@ -529,4 +529,28 @@ export {
   getRightsForDisputeRecord,
   getDisputesForRightRecord,
 } from "./rights-schema.js";
+
+// DAO Treasury Management (#1076)
+export {
+  initializeTreasuryTables,
+  clearTreasuryTables,
+  createCategoryRecord,
+  getCategoryById,
+  getCategoryByName,
+  listCategories,
+  updateCategoryRecord,
+  deleteCategoryRecord,
+  createAllocationRecord,
+  getAllocationById,
+  listAllocations,
+  createExpenseRecord,
+  getExpenseById,
+  listExpenses as listTreasuryExpenseRecords,
+  updateExpenseRecord,
+  deleteExpenseRecord,
+  createApprovalRecord,
+  listApprovalsByExpense,
+  createReceiptRecord,
+  listReceiptsByExpense,
+} from "./treasury-schema.js";
 
