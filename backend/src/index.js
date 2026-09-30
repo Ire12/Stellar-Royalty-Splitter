@@ -1,3 +1,4 @@
+
 // dotenv is optional - load .env file if needed
 // import "dotenv/config";
 
@@ -69,6 +70,8 @@ import { initializeWebSocket } from "./websocket.js";
 import { startSnapshotScheduler } from "./jobs/snapshot-job.js";
 import { startWebhookRetryScheduler } from "./jobs/retry-failed-webhooks.js";
 import { adminApiKeysRouter } from "./routes/admin-api-keys.js";
+import partnerApiRouter from "./routes/partner-api.js";
+import { apiKeyAuth, meterApiCall, partnerRateLimit } from "./middleware/api-key-auth.js";
 import { recordApiKeyRequest } from "./database/rate-limit.js";
 import { createMetricsPusher } from "./metrics-pushgateway.js";
 import { transactionFinalityRouter } from "./routes/transaction-finality.js";
@@ -107,14 +110,18 @@ import { backupRouter } from "./routes/backup.js";
 import { startDistributionScheduler } from "./services/distribution-scheduler.js";
 import { startBackupScheduler } from "./services/contract-backup.js";
 import { rightsRouter } from "./routes/rights-management.js";
-import { segmentationRouter } from "./routes/segmentation.js";
-import { campaignsRouter } from "./routes/campaigns.js";
+import { treasuryRouter } from "./routes/treasury/index.js";
 
 
 
 // Initialize database on startup
 initializeDatabase();
 initializeSigningKey();
+
+// Advanced API rate limiting and traffic shaping (#traffic-shaping).
+// Token-bucket per endpoint, endpoint prioritization, and backpressure.
+const trafficShaper = createTrafficShaperMiddleware();
+const capacityPlanner = createCapacityPlanner();
 
 // Connect the distributed (Redis) cache layer when REDIS_URL is configured.
 // No-op when unset; never throws (#926).
@@ -183,11 +190,19 @@ app.use(responseTimeMiddleware());
 // HTTP request count + latency histograms (#935), also the canary's health signal (#936)
 app.use(httpMetricsMiddleware);
 
+// Advanced traffic shaping: token bucket per endpoint, prioritization, and
+// backpressure (429 + Retry-After, cached-data degradation) (#traffic-shaping).
+app.use(trafficShaper);
+
 // Mirror safe requests to the canary when SHADOW_TARGET_URL is set (#936)
 app.use(createTrafficShadowMiddleware());
 
 // Reject new incoming requests during graceful shutdown (#701)
 app.use(shutdownMiddleware);
+
+// Capacity planning: sample load, alert above 80% capacity, emit scale
+// recommendations (#traffic-shaping).
+app.use(capacityPlanner.middleware());
 
 // Security headers
 app.use(helmet());
@@ -322,6 +337,9 @@ const simulateLimiter = rateLimit({
 
 app.use(generalLimiter);
 
+// Log deprecated-version usage for partner migration tracking (#api-versioning).
+app.use(deprecationTrackingMiddleware());
+
 // #608: Track per-API-key request counts for the rate-limit dashboard.
 // Only records authenticated (keyed) requests that were not blocked by the
 // limiter above (blocked requests are recorded in the limiter's handler).
@@ -350,6 +368,12 @@ app.use(
 // Attach X-API-Version header to all versioned responses
 app.use("/api/v1", (_req, res, next) => {
   res.set("X-API-Version", "v1");
+  next();
+});
+
+// Attach X-API-Version header to all versioned responses (v1, v2, v3).
+app.use("/api", (_req, res, next) => {
+  res.set("X-API-Version", res.get("X-API-Version") || "v3");
   next();
 });
 
@@ -534,13 +558,9 @@ app.use("/api/v1/backup", backupRouter);
 app.use("/api/v1/rights", writeLimiter);
 app.use("/api/v1/rights", rightsRouter);
 
-// Advanced user segmentation and targeting for marketing (#segmentation)
-app.use("/api/v1/segments", writeLimiter);
-app.use("/api/v1/segments", segmentationRouter);
-
-// Marketing campaign management and A/B testing (#segmentation)
-app.use("/api/v1/campaigns", writeLimiter);
-app.use("/api/v1/campaigns", campaignsRouter);
+// DAO Treasury Management (#1076)
+app.use("/api/v1/treasury", writeLimiter);
+app.use("/api/v1/treasury", treasuryRouter);
 
 
 // Admin operations (separate from /api/v1; protected by ADMIN_ROTATE_TOKEN)
@@ -566,11 +586,15 @@ app.use("/admin", adminRouter);
 app.use("/admin/api-keys", adminLimiter);
 app.use("/admin/api-keys", adminApiKeysRouter);
 
-// Legacy /api/* redirect to /api/v1/* ÔÇö routes under /api/v1/* are canonical
+// Partner API with metering and rate limiting (#996)
+app.use("/api/v1/partner", apiKeyAuth(), meterApiCall(), partnerRateLimit(), partnerApiRouter);
+
+// Legacy /api/* redirect to /api/v1/* — routes under /api/v1/* are canonical
 app.use("/api", (req, res) => {
   res.set("Deprecation", "true");
-  res.set("Link", `</api/v1${req.url}>; rel="successor-version"`);
-  res.redirect(308, `/api/v1${req.url}`);
+  res.set("Sunset", new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString());
+  res.set("Link", `</api/v3${req.url}>; rel="successor-version"`);
+  res.redirect(308, `/api/v3${req.url}`);
 });
 
 // Any request that didn't match a route above gets the standard error shape
@@ -582,10 +606,15 @@ app.use(errorHandler);
 
 async function startServer() {
   const PORT = process.env.PORT ?? 3001;
+  let l1WarmingInterval = null;
+  let l2WarmingInterval = null;
   const server = app.listen(PORT, () => logger.info(`API listening on http://localhost:${PORT}`));
 
   // GraphQL API with subscriptions (#809, #969)
   await setupGraphQL(app, "/api/v1/graphql", server);
+
+  // GraphQL is also exposed under the current version prefix (#api-versioning).
+  await setupGraphQL(app, "/api/v3/graphql", server);
 
   // Initialize WebSocket for real-time notifications (#594)
   const wss = initializeWebSocket(server);
@@ -616,6 +645,9 @@ async function startServer() {
 
   // #938: periodic hash-chain verification + retention enforcement.
   const auditTrailVerifier = startAuditTrailVerifier();
+
+  // Start capacity planning monitor (#traffic-shaping).
+  capacityPlanner.start();
 
   // Start weekly email digest scheduler if email is configured
   let digestInterval = null;
@@ -673,6 +705,7 @@ async function startServer() {
         paymentScheduleJob.stop();
       }
       metricsPusher.stop();
+      capacityPlanner.stop();
       if (auditTrailVerifier) {
         auditTrailVerifier.stop();
       }
@@ -682,6 +715,9 @@ async function startServer() {
       }
       if (l2WarmingInterval) {
         clearInterval(l2WarmingInterval);
+      }
+      if (typeof stopDeprecationTracking === "function") {
+        stopDeprecationTracking();
       }
     },
   });

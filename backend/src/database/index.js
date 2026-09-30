@@ -1,5 +1,5 @@
 /**
- * Database module index — re-exports all database functions.
+ * Database module index ÔÇö re-exports all database functions.
  * Provides backwards compatibility while organizing code into focused submodules.
  */
 
@@ -528,19 +528,29 @@ export {
   linkRightToDisputeRecord,
   getRightsForDisputeRecord,
   getDisputesForRightRecord,
-} from "./rights.js";
+} from "./rights-schema.js";
 
-// User segmentation and marketing targeting
+// DAO Treasury Management (#1076)
 export {
-  initializeSegmentationTables,
-  createSegment,
-  getSegment,
-  listSegments,
-  updateSegment,
-  deleteSegment,
-  computeSegmentMembership,
-  getSegmentMembers,
-  getSegmentSize,
-  getSegmentStatistics,
-  exportSegmentAudience,
-} from "./segmentation.js";
+  initializeTreasuryTables,
+  clearTreasuryTables,
+  createCategoryRecord,
+  getCategoryById,
+  getCategoryByName,
+  listCategories,
+  updateCategoryRecord,
+  deleteCategoryRecord,
+  createAllocationRecord,
+  getAllocationById,
+  listAllocations,
+  createExpenseRecord,
+  getExpenseById,
+  listExpenses as listTreasuryExpenseRecords,
+  updateExpenseRecord,
+  deleteExpenseRecord,
+  createApprovalRecord,
+  listApprovalsByExpense,
+  createReceiptRecord,
+  listReceiptsByExpense,
+} from "./treasury-schema.js";
+
